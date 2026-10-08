@@ -1,6 +1,6 @@
 // client/src/pages/Documents.jsx
 import { useEffect, useState } from 'react';
-import api from '../api/axios';
+import api, { resolveFileUrl } from '../api/axios';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import Drawer from '../components/Drawer';
@@ -140,7 +140,7 @@ export default function Documents() {
       render: (row) => (
         <div className="flex items-center gap-2">
           <a
-            href={row.fileUrl}
+            href={resolveFileUrl(row.fileUrl)}
             target="_blank"
             rel="noreferrer"
             className="text-muted hover:text-brand-red"

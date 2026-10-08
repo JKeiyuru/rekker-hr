@@ -11,6 +11,25 @@ const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
+// Fail fast and loud on missing config, instead of letting the server boot
+// "successfully" and then throwing a cryptic 500 the first time someone
+// tries to log in (this is almost certainly why login was failing: a
+// missing JWT_SECRET makes jwt.sign() throw mid-request).
+const REQUIRED_ENV = ['MONGO_URI', 'JWT_SECRET'];
+const missing = REQUIRED_ENV.filter((key) => !process.env[key] || !process.env[key].trim());
+if (missing.length > 0) {
+  console.error('\n❌ Missing required environment variable(s): ' + missing.join(', '));
+  console.error('   Set them in server/.env locally, or in your Render service\'s');
+  console.error('   Environment tab if this is running on Render, then restart.\n');
+  process.exit(1);
+}
+if (!process.env.CLIENT_URL) {
+  console.warn(
+    '⚠️  CLIENT_URL is not set - CORS will default to http://localhost:5173, which will ' +
+      'block requests from a deployed frontend. Set CLIENT_URL to your frontend\'s real URL.'
+  );
+}
+
 connectDB();
 
 const app = express();

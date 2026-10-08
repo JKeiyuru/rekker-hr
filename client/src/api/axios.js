@@ -1,9 +1,27 @@
 // client/src/api/axios.js
 import axios from 'axios';
 
+// In local dev, Vite's dev-server proxy (see vite.config.js) forwards
+// "/api" to the backend, so a relative path works fine. That proxy does
+// NOT exist once the frontend is built and deployed as a static site - the
+// static host has no idea what "/api" is supposed to point to, which is
+// why login (and everything else) silently fails after deploying to
+// Render. Set VITE_API_URL to your backend's full URL in the frontend's
+// environment (e.g. https://rekker-hr-api.onrender.com/api) to fix it.
+const baseURL = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL,
 });
+
+// The backend's origin with no /api suffix - e.g. for building a link to
+// an uploaded file (/uploads/xyz.pdf) or the payroll Excel export, which
+// are served directly by the backend, not proxied through "/api".
+export const apiOrigin = baseURL.replace(/\/api\/?$/, '');
+
+// Turns a backend-relative path (as stored in the DB, e.g. "/uploads/x.pdf")
+// into a full URL that works both in local dev (proxied) and once deployed.
+export const resolveFileUrl = (path) => (path?.startsWith('http') ? path : `${apiOrigin}${path}`);
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('rekker-hr-token');

@@ -29,9 +29,22 @@ const registerUser = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/login
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password) {
+    res.status(400);
+    throw new Error('Email and password are required');
+  }
 
-  const user = await User.findOne({ email }).select('+password').populate('employee');
-  if (!user || !(await user.matchPassword(password))) {
+  const user = await User.findOne({ email: email.toLowerCase().trim() })
+    .select('+password')
+    .populate('employee');
+
+  // Guard against a user record with no password hash at all (e.g. created
+  // by hand directly in the database rather than through this API/the seed
+  // scripts) - without this, bcrypt throws on undefined and you get an
+  // opaque 500 instead of a clear "invalid credentials".
+  const passwordMatches = user && user.password ? await user.matchPassword(password) : false;
+
+  if (!user || !passwordMatches) {
     res.status(401);
     throw new Error('Invalid email or password');
   }

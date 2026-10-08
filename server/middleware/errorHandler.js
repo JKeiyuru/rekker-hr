@@ -31,6 +31,13 @@ const errorHandler = (err, req, res, next) => {
       .join(', ');
   }
 
+  // Always log the real error server-side (Render/terminal), even though we
+  // don't send the stack to the client in production. Without this, a 500
+  // only ever shows up as a bare access-log line with no way to diagnose it.
+  if (statusCode >= 500) {
+    console.error(`[${req.method} ${req.originalUrl}]`, err);
+  }
+
   res.status(statusCode).json({
     message,
     stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
