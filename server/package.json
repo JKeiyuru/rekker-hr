@@ -10,7 +10,8 @@
     "seed": "node utils/seed.js",
     "seed:employees": "node utils/seedEmployees.js",
     "clean:demo": "node utils/removeDemoData.js",
-    "clean:departed": "node utils/removeDeparted.js"
+    "clean:departed": "node utils/removeDeparted.js",
+    "seed:directors": "node utils/seedDirectors.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
