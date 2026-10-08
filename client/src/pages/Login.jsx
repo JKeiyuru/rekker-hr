@@ -85,7 +85,7 @@ export default function Login() {
 
           <Field label="Email address" required>
             <div className="relative">
-              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-black" />
               <TextInput
                 type="email"
                 required
@@ -100,7 +100,7 @@ export default function Login() {
 
           <Field label="Password" required>
             <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-black" />
               <TextInput
                 type="password"
                 required

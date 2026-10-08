@@ -8,7 +8,10 @@ import axios from 'axios';
 // why login (and everything else) silently fails after deploying to
 // Render. Set VITE_API_URL to your backend's full URL in the frontend's
 // environment (e.g. https://rekker-hr-api.onrender.com/api) to fix it.
-const baseURL = import.meta.env.VITE_API_URL || '/api';
+// Be forgiving about how the variable was typed: with or without a
+// trailing slash, with or without the /api suffix, all resolve correctly.
+const rawUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+const baseURL = rawUrl ? (rawUrl.endsWith('/api') ? rawUrl : `${rawUrl}/api`) : '/api';
 
 const api = axios.create({
   baseURL,
