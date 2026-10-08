@@ -1,6 +1,12 @@
 // client/src/components/Fields.jsx
 const base =
-  'w-full rounded-xl border border-border bg-surface2/60 px-3.5 py-2.5 text-sm text-ink placeholder:text-muted transition-colors focus-ring focus:bg-surface focus:border-brand-red/40';
+  'w-full rounded-xl border border-border bg-surface2/60 px-3.5 py-2.5 text-sm text-ink placeholder:text-muted transition-colors focus-ring focus:bg-surface focus:border-brand-red/40 dark:[color-scheme:dark]';
+
+// Merge caller classes with the base styling. Previously a passed-in
+// className (e.g. "pl-10") REPLACED the base classes entirely, which
+// stripped the text colour, background and border off the input - so in
+// dark mode typed text was effectively invisible.
+const cx = (...classes) => classes.filter(Boolean).join(' ');
 
 export function Field({ label, required, hint, children }) {
   return (
@@ -16,17 +22,17 @@ export function Field({ label, required, hint, children }) {
   );
 }
 
-export function TextInput(props) {
-  return <input className={base} {...props} />;
+export function TextInput({ className, ...props }) {
+  return <input className={cx(base, className)} {...props} />;
 }
 
-export function TextArea(props) {
-  return <textarea rows={3} className={`${base} resize-none`} {...props} />;
+export function TextArea({ className, ...props }) {
+  return <textarea rows={3} className={cx(base, 'resize-none', className)} {...props} />;
 }
 
-export function Select({ children, ...props }) {
+export function Select({ children, className, ...props }) {
   return (
-    <select className={`${base} appearance-none bg-surface2/60`} {...props}>
+    <select className={cx(base, 'appearance-none', className)} {...props}>
       {children}
     </select>
   );

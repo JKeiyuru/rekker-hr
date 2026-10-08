@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { getDefaultRoute } from '../config/nav';
-import { Moon, Sun, Lock, Mail } from 'lucide-react';
+import { Moon, Sun, Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import Button from '../components/Button';
 import { Field, TextInput } from '../components/Fields';
 import toast from 'react-hot-toast';
@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -22,7 +23,7 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      const data = await login(email, password);
+      const data = await login(email.trim(), password);
       navigate(location.state?.from || getDefaultRoute(data.role), { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Invalid email or password');
@@ -85,11 +86,12 @@ export default function Login() {
 
           <Field label="Email address" required>
             <div className="relative">
-              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-black" />
+              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
               <TextInput
                 type="email"
                 required
                 autoFocus
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@rekker.co.ke"
@@ -100,15 +102,25 @@ export default function Login() {
 
           <Field label="Password" required>
             <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-black" />
+              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
               <TextInput
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="pl-10"
+                placeholder="Your password"
+                className="pl-10 pr-11"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                className="focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted hover:text-ink hover:bg-surface2 transition-colors"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </Field>
 
@@ -117,8 +129,7 @@ export default function Login() {
           </Button>
 
           <p className="text-xs text-muted text-center mt-6">
-            First time here? Ask your administrator for an account, or run the seed
-            script for a default admin login.
+            First time here? Ask your administrator for an account.
           </p>
         </form>
       </div>
