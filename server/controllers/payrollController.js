@@ -1,260 +1,190 @@
 // server/controllers/payrollController.js
+// Payroll workspace API (accountant / admin / director / hr).
 const fs = require('fs');
 const asyncHandler = require('express-async-handler');
-const ExcelJS = require('exceljs');
-const Payroll = require('../models/Payroll');
 const Employee = require('../models/Employee');
-const { parseEndMonthSheet, parseMidMonthSheet, listSheetNames } = require('../utils/payrollImport');
+const PayrollEntry = require('../models/PayrollEntry');
+const PayrollAudit = require('../models/PayrollAudit');
+const svc = require('../services/payrollService');
+const imp = require('../services/payrollImport');
+const exp = require('../services/payrollExport');
+const { PAYROLL_MANAGE_ROLES, PAYROLL_APPROVE_ROLES } = require('../config/roles');
 
-// @desc    Get payroll records (supports ?period=&employee=&status=&runType=)
-// @route   GET /api/payroll
-const getPayrolls = asyncHandler(async (req, res) => {
-  const { period, employee, status, runType } = req.query;
-  const filter = {};
-  if (period) filter.period = period;
-  if (employee) filter.employee = employee;
-  if (status) filter.status = status;
-  if (runType) filter.runType = runType;
+const runTypeOf = (req) => req.query.runType || req.body.runType || req.params.runType || 'End-Month';
 
-  const records = await Payroll.find(filter)
-    .populate('employee', 'firstName lastName employeeId department role bankName bankAccount')
-    .sort({ period: -1, runType: 1 });
-  res.json(records);
+// What can this user do? The UI hides buttons accordingly; the routes enforce it.
+const getMeta = asyncHandler(async (req, res) => {
+  res.json({
+    canManage: PAYROLL_MANAGE_ROLES.includes(req.user.role),
+    canApprove: PAYROLL_APPROVE_ROLES.includes(req.user.role),
+    canReopenPaid: ['admin', 'director'].includes(req.user.role),
+    runTypes: svc.RUN_TYPES,
+  });
 });
 
-// @desc    Get one payroll record
-// @route   GET /api/payroll/:id
-const getPayroll = asyncHandler(async (req, res) => {
-  const record = await Payroll.findById(req.params.id).populate('employee');
-  if (!record) {
-    res.status(404);
-    throw new Error('Payroll record not found');
+// ---- templates ----
+const getTemplate = asyncHandler(async (req, res) => {
+  res.json(await svc.getTemplate(req.params.runType));
+});
+const saveTemplate = asyncHandler(async (req, res) => {
+  res.json(await svc.saveTemplate(req.params.runType, req.body, req.user));
+});
+
+// ---- runs ----
+const listRuns = asyncHandler(async (req, res) => {
+  res.json(await svc.listRuns({ year: req.query.year, runType: req.query.runType }));
+});
+const getRun = asyncHandler(async (req, res) => {
+  const { period, runType } = req.params;
+  const data = await svc.loadRun(period, runType);
+  res.json({
+    run: data.run && { ...data.run.toObject(), snapshot: undefined },
+    frozen: !!(data.run && data.run.snapshot),
+    template: { name: data.template.name, sections: data.template.sections, payslip: data.template.payslip, version: data.template.version },
+    columns: data.columns,
+    entries: data.entries,
+    totals: data.totals,
+  });
+});
+const createRun = asyncHandler(async (req, res) => {
+  const { period, runType = 'End-Month', prefill = 'previous' } = req.body;
+  const r = await svc.createRun(period, runType, { prefill }, req.user);
+  res.status(201).json({ run: r.run, copied: r.copied });
+});
+const setStatus = asyncHandler(async (req, res) => {
+  const run = await svc.setStatus(req.params.period, req.params.runType, req.body.status, req.user);
+  res.json({ ...run.toObject(), snapshot: undefined });
+});
+const deleteRun = asyncHandler(async (req, res) => {
+  await svc.deleteRun(req.params.period, req.params.runType, req.user);
+  res.json({ message: 'Run deleted' });
+});
+const recalc = asyncHandler(async (req, res) => {
+  const { period, runType } = req.params;
+  const run = await svc.getRun(period, runType);
+  svc.assertEditable(run);
+  const t = await svc.getTemplate(runType);
+  const n = await svc.recalcRun(period, runType, t.columns.map((c) => c.toObject()));
+  res.json({ recalculated: n });
+});
+
+// ---- rows ----
+const addEntry = asyncHandler(async (req, res) => {
+  const { period, runType } = req.params;
+  const e = await svc.addEntry(period, runType, req.body, req.user);
+  res.status(201).json(await PayrollEntry.findById(e._id).populate('employee', svc.EMP_FIELDS).lean());
+});
+const patchEntry = asyncHandler(async (req, res) => {
+  const e = await svc.patchEntry(req.params.id, req.body, req.user);
+  res.json(await PayrollEntry.findById(e._id).populate('employee', svc.EMP_FIELDS).lean());
+});
+// Several cells at once (paste from Excel): [{ id, values }]
+const patchMany = asyncHandler(async (req, res) => {
+  const out = [];
+  for (const item of req.body.updates || []) {
+    const e = await svc.patchEntry(item.id, { values: item.values }, req.user);
+    out.push(await PayrollEntry.findById(e._id).populate('employee', svc.EMP_FIELDS).lean());
   }
-  res.json(record);
+  res.json(out);
+});
+const removeEntry = asyncHandler(async (req, res) => {
+  await svc.removeEntry(req.params.id, req.user);
+  res.json({ message: 'Removed' });
 });
 
-// @desc    Create a payroll record for an employee/period/run
-// @route   POST /api/payroll
-const createPayroll = asyncHandler(async (req, res) => {
-  const record = await Payroll.create(req.body);
-  res.status(201).json(record);
+// ---- staff ----
+const listStaff = asyncHandler(async (req, res) => {
+  const emps = await Employee.find({ status: { $ne: 'Exited' } })
+    .select('employeeId firstName lastName department role branch bankName bankAccount email')
+    .sort({ firstName: 1 })
+    .lean();
+  res.json(emps);
+});
+const createStaff = asyncHandler(async (req, res) => {
+  const { name, section, bankName, bankAccount, period } = req.body;
+  if (!name || !String(name).trim()) { res.status(400); throw new Error('Enter the person\'s name'); }
+  const emp = await imp.createEmployeeFromPayroll(name, section, period || new Date().toISOString().slice(0, 7), { type: bankName, no: bankAccount });
+  res.status(201).json(emp);
 });
 
-// @desc    Update a payroll record
-// @route   PUT /api/payroll/:id
-const updatePayroll = asyncHandler(async (req, res) => {
-  const record = await Payroll.findById(req.params.id);
-  if (!record) {
-    res.status(404);
-    throw new Error('Payroll record not found');
-  }
-  Object.assign(record, req.body);
-  await record.save(); // triggers pre-save total recalculation
-  res.json(record);
-});
-
-// @desc    Delete a payroll record
-// @route   DELETE /api/payroll/:id
-const deletePayroll = asyncHandler(async (req, res) => {
-  const record = await Payroll.findByIdAndDelete(req.params.id);
-  if (!record) {
-    res.status(404);
-    throw new Error('Payroll record not found');
-  }
-  res.json({ message: 'Deleted successfully' });
-});
-
-// @desc    Export a payroll period (+ run type) to an Excel workbook
-// @route   GET /api/payroll/export/:period?runType=
-const exportPayrollPeriod = asyncHandler(async (req, res) => {
-  const { period } = req.params;
-  const { runType } = req.query;
-  const filter = { period };
-  if (runType) filter.runType = runType;
-  const records = await Payroll.find(filter).populate(
-    'employee',
-    'firstName lastName employeeId department role bankName bankAccount kraPin nssfNumber nhifNumber'
-  );
-
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Rekker HR System';
-  const sheet = workbook.addWorksheet(`Payroll ${period}${runType ? ' - ' + runType : ''}`);
-
-  sheet.columns = [
-    { header: 'Employee ID', key: 'employeeId', width: 14 },
-    { header: 'Name', key: 'name', width: 26 },
-    { header: 'Department', key: 'department', width: 18 },
-    { header: 'Role', key: 'role', width: 20 },
-    { header: 'Run Type', key: 'runType', width: 12 },
-    { header: 'Basic Salary', key: 'basicSalary', width: 16 },
-    { header: 'Allowances', key: 'allowances', width: 16 },
-    { header: 'Overtime', key: 'overtime', width: 14 },
-    { header: 'Reimbursements', key: 'reimbursements', width: 16 },
-    { header: 'Bonuses', key: 'bonuses', width: 14 },
-    { header: 'Gross Pay', key: 'grossPay', width: 16 },
-    { header: 'Deductions', key: 'deductions', width: 16 },
-    { header: 'Net Pay', key: 'netPay', width: 16 },
-    { header: 'Bank Name', key: 'bankName', width: 18 },
-    { header: 'Bank Account', key: 'bankAccount', width: 18 },
-    { header: 'KRA PIN', key: 'kraPin', width: 16 },
-    { header: 'Status', key: 'status', width: 14 },
-  ];
-  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6001C' } };
-
-  records.forEach((r) => {
-    const allowancesTotal = (r.allowances || []).reduce((s, a) => s + (a.amount || 0), 0);
-    const bonusesTotal = (r.bonuses || []).reduce((s, b) => s + (b.amount || 0), 0);
-    const reimbursementsTotal = (r.expenseReimbursements || []).reduce((s, x) => s + (x.amount || 0), 0);
-    const overtimePay =
-      r.overtimeAmount != null ? r.overtimeAmount : (r.overtimeHours || 0) * (r.overtimeRate || 0);
-    sheet.addRow({
-      employeeId: r.employee?.employeeId,
-      name: `${r.employee?.firstName || ''} ${r.employee?.lastName || ''}`,
-      department: r.employee?.department,
-      role: r.employee?.role,
-      runType: r.runType,
-      basicSalary: r.basicSalary,
-      allowances: allowancesTotal,
-      overtime: overtimePay,
-      reimbursements: reimbursementsTotal,
-      bonuses: bonusesTotal,
-      grossPay: r.grossPay,
-      deductions: r.totalDeductions,
-      netPay: r.netPay,
-      bankName: r.employee?.bankName,
-      bankAccount: r.employee?.bankAccount,
-      kraPin: r.employee?.kraPin,
-      status: r.status,
-    });
+// ---- import ----
+const withFile = (handler) =>
+  asyncHandler(async (req, res) => {
+    if (!req.file) { res.status(400); throw new Error('Choose an Excel file (.xlsx) to upload'); }
+    try {
+      const wb = await imp.loadWorkbook(req.file.path);
+      await handler(req, res, wb);
+    } finally {
+      fs.unlink(req.file.path, () => {});
+    }
   });
 
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename=payroll-${period}${runType ? '-' + runType : ''}.xlsx`);
-  await workbook.xlsx.write(res);
-  res.end();
+const importSheets = withFile(async (req, res, wb) => {
+  res.json({ sheets: await imp.listSheets(wb) });
 });
-
-// --- Historical import -----------------------------------------------
-
-// @desc    List sheet names in an uploaded workbook (so the UI can offer a
-//          month picker for a multi-sheet file like PAYROLL_2026.xlsx)
-// @route   POST /api/payroll/import/sheets
-const listImportSheets = asyncHandler(async (req, res) => {
-  if (!req.file) {
-    res.status(400);
-    throw new Error('A file is required');
-  }
-  try {
-    const sheets = await listSheetNames(req.file.path);
-    res.json({ sheets });
-  } finally {
-    fs.unlink(req.file.path, () => {});
-  }
+const importPreview = withFile(async (req, res, wb) => {
+  const ws = wb.getWorksheet(req.body.sheet) || wb.worksheets[0];
+  const runType = req.body.runType || 'End-Month';
+  const template = await svc.getTemplate(runType);
+  res.json({ ...(await imp.previewSheet(ws, template, runType)), templateColumns: template.columns.filter((c) => !c.archived) });
 });
-
-// @desc    Parse an uploaded payroll file and return a preview, with a
-//          best-guess employee match per row - nothing is saved yet.
-// @route   POST /api/payroll/import/preview
-const previewImport = asyncHandler(async (req, res) => {
-  if (!req.file) {
-    res.status(400);
-    throw new Error('A file is required');
-  }
-  const { format, sheet } = req.body; // format: 'end-month' | 'mid-month'
-  try {
-    const rows =
-      format === 'mid-month'
-        ? await parseMidMonthSheet(req.file.path, sheet)
-        : await parseEndMonthSheet(req.file.path, sheet);
-    res.json({ rows });
-  } finally {
-    fs.unlink(req.file.path, () => {});
-  }
+const importAuto = withFile(async (req, res, wb) => {
+  const only = req.body.sheets ? JSON.parse(req.body.sheets) : undefined;
+  const results = await imp.importWorkbookAuto(wb, { runType: req.body.runType || 'End-Month', status: req.body.status || 'Approved', source: req.file.originalname, onlySheets: only }, req.user);
+  res.json({ results });
 });
-
-// @desc    Commit a reviewed/corrected import preview to the database.
-//          Rows with "createEmployee" create a bare employee record first
-//          (no login account) - matching exactly how Rekker wants
-//          store/shop/site staff added: visible in the system, no account.
-// @route   POST /api/payroll/import/commit
-const commitImport = asyncHandler(async (req, res) => {
-  const { period, runType, rows, importLabel } = req.body;
-  if (!period || !runType || !Array.isArray(rows)) {
-    res.status(400);
-    throw new Error('period, runType and rows are required');
-  }
-
-  const results = { created: 0, skipped: 0, newEmployees: 0, errors: [] };
-
-  for (const row of rows) {
-    try {
-      let employeeId = row.employeeId;
-
-      if (!employeeId && row.createEmployee) {
-        const parts = (row.rawName || '').trim().split(/\s+/);
-        const newEmployee = await Employee.create({
-          firstName: parts[0] || row.rawName,
-          lastName: parts.slice(1).join(' ') || '-',
-          email: `${(parts[0] || 'staff').toLowerCase()}.${Date.now()}.${Math.floor(Math.random() * 10000)}@placeholder.rekker.co.ke`,
-          phone: 'Unknown',
-          department: row.department || 'Unassigned',
-          role: row.role || 'Staff',
-          branch: row.branch || 'HQ',
-          dateJoined: new Date(),
-          notes: `Added via payroll import (${importLabel || period}). Email is a placeholder - update with their real contact details.`,
-        });
-        employeeId = newEmployee._id;
-        results.newEmployees++;
-      }
-
-      if (!employeeId) {
-        results.skipped++;
-        results.errors.push(`${row.rawName}: no employee selected or created - skipped`);
-        continue;
-      }
-
-      const payload = {
-        employee: employeeId,
-        period,
-        runType,
-        basicSalary: row.basicSalary || 0,
-        overtimeAmount: row.overtimeAmount,
-        allowances: row.allowances || [],
-        deductions: row.deductions || [],
-        expenseReimbursements: row.expenseReimbursements || [],
-        notes: row.notes,
-        status: 'Paid', // historical imports represent pay that's already happened
-        importedFrom: importLabel || `import-${period}-${runType}`,
-      };
-
-      // findOneAndUpdate's upsert bypasses document middleware, so it would
-      // skip the pre-save hook that computes grossPay/netPay - find-or-new
-      // + .save() instead, so totals are always correctly recalculated.
-      let record = await Payroll.findOne({ employee: employeeId, period, runType });
-      if (record) {
-        Object.assign(record, payload);
-      } else {
-        record = new Payroll(payload);
-      }
-      await record.save();
-      results.created++;
-    } catch (err) {
-      results.errors.push(`${row.rawName}: ${err.message}`);
+const importCommit = asyncHandler(async (req, res) => {
+  const { period, runType = 'End-Month', mapping, rows, status = 'Draft', replace = false, source, remember } = req.body;
+  if (!period || !Array.isArray(mapping) || !Array.isArray(rows)) { res.status(400); throw new Error('Nothing to import'); }
+  if (remember) {
+    const t = await svc.getTemplate(runType);
+    for (const m of mapping) {
+      if (!m.target || m.target === '__name' || !m.header) continue;
+      const c = t.columns.find((x) => x.key === m.target);
+      if (c && !c.aliases.some((a) => a.toUpperCase() === String(m.header).toUpperCase()) && c.label.toUpperCase() !== String(m.header).toUpperCase()) c.aliases.push(m.header);
     }
+    await t.save();
   }
+  res.json(await imp.commitSheet({ period, runType, mapping, rows, status, replace, source }, req.user));
+});
 
-  res.status(201).json(results);
+// ---- exports / reports ----
+const sendXlsx = (res, buf, name) => {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.send(Buffer.from(buf));
+};
+const exportRun = asyncHandler(async (req, res) => {
+  const { period, runType } = req.params;
+  sendXlsx(res, await exp.exportRunXlsx(period, runType), `Rekker-${runType}-Payroll-${period}.xlsx`);
+});
+const exportBank = asyncHandler(async (req, res) => {
+  const { period, runType } = req.params;
+  if (req.query.format === 'csv') {
+    const rows = await exp.bankSchedule(period, runType);
+    const csv = ['Bank,Account No,Name,Amount', ...rows.map((r) => [r.bank, `"${r.account}"`, `"${r.name}"`, r.net.toFixed(2)].join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="Rekker-payments-${runType}-${period}.csv"`);
+    return res.send(csv);
+  }
+  sendXlsx(res, await exp.exportBankXlsx(period, runType), `Rekker-Payment-Schedule-${runType}-${period}.xlsx`);
+});
+const summary = asyncHandler(async (req, res) => {
+  res.json(await exp.yearSummary({ year: req.query.year || new Date().getFullYear(), runType: runTypeOf(req) }));
+});
+const exportSummary = asyncHandler(async (req, res) => {
+  const year = req.query.year || new Date().getFullYear();
+  sendXlsx(res, await exp.exportYearXlsx({ year, runType: runTypeOf(req) }), `Rekker-Payroll-Summary-${year}.xlsx`);
+});
+const getAudit = asyncHandler(async (req, res) => {
+  const q = {};
+  if (req.query.period) q.period = req.query.period;
+  res.json(await PayrollAudit.find(q).sort({ at: -1 }).limit(200).lean());
 });
 
 module.exports = {
-  getPayrolls,
-  getPayroll,
-  createPayroll,
-  updatePayroll,
-  deletePayroll,
-  exportPayrollPeriod,
-  listImportSheets,
-  previewImport,
-  commitImport,
+  getMeta, getTemplate, saveTemplate, listRuns, getRun, createRun, setStatus, deleteRun, recalc,
+  addEntry, patchEntry, patchMany, removeEntry, listStaff, createStaff,
+  importSheets, importPreview, importAuto, importCommit,
+  exportRun, exportBank, summary, exportSummary, getAudit,
 };

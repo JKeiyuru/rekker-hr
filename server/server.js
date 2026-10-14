@@ -58,6 +58,7 @@ app.use('/api/employees', require('./routes/employeeRoutes'));
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/leave', require('./routes/leaveRoutes'));
 app.use('/api/payroll', require('./routes/payrollRoutes'));
+app.use('/api/payslips', require('./routes/payslipRoutes'));
 app.use('/api/performance', require('./routes/performanceRoutes'));
 app.use('/api/recruitment', require('./routes/recruitmentRoutes'));
 app.use('/api/onboarding', require('./routes/onboardingRoutes'));

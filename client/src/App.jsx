@@ -9,6 +9,7 @@ import Employees from './pages/Employees';
 import Attendance from './pages/Attendance';
 import Leave from './pages/Leave';
 import Payroll from './pages/Payroll';
+import Payslips from './pages/Payslips';
 import Performance from './pages/Performance';
 import Recruitment from './pages/Recruitment';
 import Onboarding from './pages/Onboarding';
@@ -70,11 +71,12 @@ export default function App() {
           <Route
             path="/payroll"
             element={
-              <ProtectedRoute roles={['admin', 'hr', 'director']}>
+              <ProtectedRoute roles={['admin', 'accountant', 'hr', 'director']}>
                 <Payroll />
               </ProtectedRoute>
             }
           />
+          <Route path="/payslips" element={<Payslips />} />
           <Route path="/performance" element={<Performance />} />
           <Route
             path="/recruitment"

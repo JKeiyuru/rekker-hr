@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   FolderLock,
   UserCog,
+  Receipt,
 } from 'lucide-react';
 
 export const navItems = [
@@ -20,7 +21,8 @@ export const navItems = [
   { to: '/employees', label: 'Employees', icon: Users, roles: ['admin', 'hr', 'director', 'manager', 'department_manager'] },
   { to: '/attendance', label: 'Attendance', icon: Clock },
   { to: '/leave', label: 'Leave', icon: CalendarDays },
-  { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin', 'hr', 'director'] },
+  { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin', 'accountant', 'hr', 'director'] },
+  { to: '/payslips', label: 'My Payslips', icon: Receipt },
   { to: '/performance', label: 'Performance', icon: Target },
   { to: '/recruitment', label: 'Recruitment', icon: UserSearch, roles: ['admin', 'hr', 'director', 'manager'] },
   { to: '/onboarding', label: 'Onboarding', icon: ClipboardCheck, roles: ['admin', 'hr', 'director', 'manager'] },
@@ -34,4 +36,4 @@ export const navItems = [
 // A plain employee has no Dashboard (it's a company/department overview),
 // so send them straight to something useful instead of a route that would
 // just redirect them again.
-export const getDefaultRoute = (role) => (role === 'employee' ? '/leave' : '/');
+export const getDefaultRoute = (role) => (role === 'employee' ? '/leave' : role === 'accountant' ? '/payroll' : '/');

@@ -127,7 +127,7 @@ export default function Users() {
           </Field>
           <Field label="Role">
             <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {['admin', 'hr', 'manager', 'employee'].map((r) => (
+              {['admin', 'accountant', 'director', 'hr', 'manager', 'department_manager', 'employee'].map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>

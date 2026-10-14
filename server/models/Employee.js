@@ -68,6 +68,10 @@ const employeeSchema = new mongoose.Schema(
     nssfNumber: { type: String },
     nhifNumber: { type: String },
 
+    // Other spellings of this person's name on payroll sheets, so imports
+    // recognise them next time (e.g. 'JOHN GAKUNDI', 'JEFF MWAURA').
+    payrollAliases: [{ type: String }],
+
     notes: { type: String },
   },
   { timestamps: true }
