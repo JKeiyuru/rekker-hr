@@ -12,6 +12,7 @@ const toneMap = {
   Returned: 'green',
   Passed: 'green',
   Open: 'green',
+  Recommended: 'green',
   // yellow - attention/in-progress
   'On Leave': 'yellow',
   Pending: 'yellow',
@@ -36,6 +37,7 @@ const toneMap = {
   Failed: 'red',
   Expired: 'red',
   Closed: 'red',
+  'Not Recommended': 'red',
   // neutral
   Cancelled: 'neutral',
   'N/A': 'neutral',

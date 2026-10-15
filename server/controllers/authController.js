@@ -2,11 +2,12 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
+const { resolveAccess } = require('../utils/userAccess');
 
 // @desc    Register a new user (admin/HR only in practice)
 // @route   POST /api/auth/register
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, employee } = req.body;
+  const { name, email, password, employee } = req.body;
 
   const exists = await User.findOne({ email });
   if (exists) {
@@ -14,13 +15,27 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new Error('A user with that email already exists');
   }
 
-  const user = await User.create({ name, email, password, role, employee });
+  // Only an admin may hand out anything above a plain employee account
+  // (HR can also reach this route, so don't let it be used to mint admins).
+  let access = { role: 'employee', managedDepartments: [], leaveRecommendation: { enabled: false, departments: [] } };
+  if (req.user.role === 'admin') {
+    try {
+      access = await resolveAccess({}, req.body);
+    } catch (err) {
+      res.status(err.status || 400);
+      throw err;
+    }
+  }
+
+  const user = await User.create({ name, email, password, employee, ...access });
 
   res.status(201).json({
     _id: user._id,
     name: user.name,
     email: user.email,
     role: user.role,
+    managedDepartments: user.managedDepartments,
+    leaveRecommendation: user.leaveRecommendation,
     token: generateToken(user._id),
   });
 });
@@ -63,6 +78,9 @@ const loginUser = asyncHandler(async (req, res) => {
     email: user.email,
     role: user.role,
     employee: user.employee,
+    managedDepartments: user.managedDepartments,
+    leaveRecommendation: user.leaveRecommendation,
+    recommendDepartments: user.recommendDepartments,
     token: generateToken(user._id),
   });
 });

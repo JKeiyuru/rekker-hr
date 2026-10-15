@@ -6,8 +6,8 @@
 // the current user is allowed to see:
 //
 //   { type: 'all' }                                    - company-wide roles
-//   { type: 'department', employeeIds, department, ownEmployeeId } - a
-//                                                          department manager
+//   { type: 'department', employeeIds, departments, ownEmployeeId } - a
+//                                                          department head
 //   { type: 'self', employeeId }                       - everyone else
 //
 // Controllers then use the helpers below to turn that into a Mongo filter
@@ -35,11 +35,22 @@ const attachScope = asyncHandler(async (req, res, next) => {
   }
 
   if (user.role === 'department_manager') {
-    const deptEmployees = await Employee.find({ department: user.employee.department }).select('_id');
+    // Departments this head is responsible for: the ones the admin chose for
+    // them, or (if none chosen) the department on their own employee record.
+    const departments = user.managedDepartments?.length
+      ? user.managedDepartments
+      : user.employee.department
+      ? [user.employee.department]
+      : [];
+    const deptEmployees = await Employee.find({ department: { $in: departments } }).select('_id');
+    const ids = deptEmployees.map((e) => e._id);
+    // Always include their own record, even if it sits outside the departments they head.
+    if (!ids.some((id) => id.toString() === user.employee._id.toString())) ids.push(user.employee._id);
     req.scope = {
       type: 'department',
-      department: user.employee.department,
-      employeeIds: deptEmployees.map((e) => e._id),
+      department: departments[0],
+      departments,
+      employeeIds: ids,
       ownEmployeeId: user.employee._id,
     };
     return next();

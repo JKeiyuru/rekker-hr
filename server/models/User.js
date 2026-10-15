@@ -1,7 +1,7 @@
 // server/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const { ROLES } = require('../config/roles');
+const { ROLES, RECOMMENDER_ROLES } = require('../config/roles');
 
 const userSchema = new mongoose.Schema(
   {
@@ -15,6 +15,22 @@ const userSchema = new mongoose.Schema(
     },
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     isActive: { type: Boolean, default: true },
+
+    // Department(s) this person heads. Only meaningful for the
+    // 'department_manager' (department head) role. Drives both which
+    // employees' data they can see and, if recommending is switched on,
+    // whose leave they can recommend. Empty = fall back to the department
+    // of their linked employee record.
+    managedDepartments: [{ type: String, trim: true }],
+
+    // Leave-recommendation permission, granted by an admin per user.
+    //   department head -> recommends for managedDepartments
+    //   manager         -> recommends for the departments listed here
+    leaveRecommendation: {
+      enabled: { type: Boolean, default: false },
+      departments: [{ type: String, trim: true }],
+    },
+
     // Marks the one (or few) permanent system super admin account(s).
     // This flag is never accepted from API request bodies (see
     // controllers/userController.js and authController.js) - it can only be
@@ -24,6 +40,24 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Departments whose leave applications this user may recommend. Derived from
+// role + settings so there is exactly one rule, used by the API and exposed
+// to the client (as `recommendDepartments`) to decide what to show.
+userSchema.virtual('recommendDepartments').get(function () {
+  if (!this.leaveRecommendation?.enabled || !RECOMMENDER_ROLES.includes(this.role)) return [];
+  if (this.role === 'department_manager') {
+    const own = this.managedDepartments?.length
+      ? this.managedDepartments
+      : this.employee?.department
+      ? [this.employee.department]
+      : [];
+    return [...own];
+  }
+  return [...(this.leaveRecommendation.departments || [])];
+});
+userSchema.set('toJSON', { virtuals: true });
+userSchema.set('toObject', { virtuals: true });
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

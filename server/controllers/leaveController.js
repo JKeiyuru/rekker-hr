@@ -2,6 +2,7 @@
 const asyncHandler = require('express-async-handler');
 const Leave = require('../models/Leave');
 const LeaveBalance = require('../models/LeaveBalance');
+const Employee = require('../models/Employee');
 const { scopeFilter, resolveTargetEmployee, isWithinScope } = require('../middleware/scope');
 
 const balanceFieldMap = {
@@ -75,31 +76,96 @@ const applyLeave = asyncHandler(async (req, res) => {
   res.status(201).json(leave);
 });
 
-// @desc    Section head recommendation (Part B) - advisory, doesn't decide
-//          the outcome, but management sees it before deciding.
+// Populate used by every endpoint that returns leave applications.
+const populateLeave = (q) =>
+  q
+    .populate('employee', 'firstName lastName employeeId department photoUrl')
+    .populate('approver', 'firstName lastName')
+    .populate('sectionHeadReview.by', 'firstName lastName');
+
+// @desc    Leave applications this user is allowed to recommend on - those of
+//          employees in the departments the admin gave them recommending
+//          rights for (never their own). ?recommendation=Pending|Recommended|
+//          Not Recommended filters by their recommendation status.
+// @route   GET /api/leave/to-recommend
+const getLeavesToRecommend = asyncHandler(async (req, res) => {
+  const departments = req.user.recommendDepartments;
+  if (!departments.length) {
+    res.status(403);
+    throw new Error('You have not been given permission to recommend leave applications');
+  }
+  const employees = await Employee.find({ department: { $in: departments } }).select('_id');
+  let ids = employees.map((e) => e._id);
+  if (req.user.employee) ids = ids.filter((id) => id.toString() !== req.user.employee._id.toString());
+
+  const filter = { employee: { $in: ids } };
+  const { recommendation, status } = req.query;
+  if (recommendation === 'Pending') filter['sectionHeadReview.decision'] = { $in: ['Pending', null] };
+  else if (['Recommended', 'Not Recommended'].includes(recommendation)) filter['sectionHeadReview.decision'] = recommendation;
+  if (status) filter.status = status;
+
+  res.json({ departments, leaves: await populateLeave(Leave.find(filter).sort({ createdAt: -1 })) });
+});
+
+// @desc    Recommendation (Part B) - advisory, doesn't decide the outcome.
+//          Only someone the admin has given recommending rights, and only
+//          for employees in their departments. Can be changed until
+//          management has made the final decision.
 // @route   PUT /api/leave/:id/section-head-review
 const sectionHeadReview = asyncHandler(async (req, res) => {
-  const { decision, by, comments } = req.body; // decision: 'Recommended' | 'Not Recommended'
+  const { decision, comments } = req.body; // decision: 'Recommended' | 'Not Recommended'
+  if (!['Recommended', 'Not Recommended'].includes(decision)) {
+    res.status(400);
+    throw new Error("Decision must be 'Recommended' or 'Not Recommended'");
+  }
+  if (decision === 'Not Recommended' && !(comments || '').trim()) {
+    res.status(400);
+    throw new Error('Please give a reason when not recommending a leave application');
+  }
   const leave = await Leave.findById(req.params.id);
   if (!leave) {
     res.status(404);
     throw new Error('Leave application not found');
   }
-  if (!isWithinScope(req.scope, leave.employee)) {
+  const employee = await Employee.findById(leave.employee).select('department');
+  if (!req.user.recommendDepartments.includes(employee?.department)) {
     res.status(403);
-    throw new Error('You can only review leave applications within your own department');
+    throw new Error("You haven't been given permission to recommend leave for this employee's department");
   }
-  leave.sectionHeadReview = { decision, by, comments, date: new Date() };
-  leave.approvalHistory.push({ action: decision, by, notes: comments });
+  if (req.user.employee && req.user.employee._id.toString() === leave.employee.toString()) {
+    res.status(403);
+    throw new Error('You cannot recommend your own leave application');
+  }
+  if (leave.status !== 'Pending') {
+    res.status(400);
+    throw new Error(`This leave application has already been ${leave.status.toLowerCase()}`);
+  }
+  const by = req.user.employee?._id;
+  leave.sectionHeadReview = {
+    decision,
+    by,
+    byUser: req.user._id,
+    byName: req.user.name,
+    comments,
+    date: new Date(),
+  };
+  leave.approvalHistory.push({ action: decision, by, byName: req.user.name, notes: comments });
   await leave.save();
-  res.json(leave);
+  res.json(await populateLeave(Leave.findById(leave._id)));
 });
 
 // @desc    Management decision (Part C) - this is what actually sets the
-//          final status and, if approved, deducts the leave balance.
+//          final status and, if approved, deducts the leave balance. Allowed
+//          for admin/HR/director regardless of the recommendation, including
+//          applications marked "Not Recommended".
 // @route   PUT /api/leave/:id/decision
 const decideLeave = asyncHandler(async (req, res) => {
-  const { decision, approver, notes } = req.body; // decision: 'Approved' | 'Rejected'
+  const { decision, notes } = req.body; // decision: 'Approved' | 'Rejected'
+  const approver = req.user.employee?._id;
+  if (!['Approved', 'Rejected'].includes(decision)) {
+    res.status(400);
+    throw new Error("Decision must be 'Approved' or 'Rejected'");
+  }
   const leave = await Leave.findById(req.params.id);
   if (!leave) {
     res.status(404);
@@ -118,7 +184,7 @@ const decideLeave = asyncHandler(async (req, res) => {
   leave.approver = approver;
   leave.decisionNotes = notes;
   leave.decisionDate = new Date();
-  leave.approvalHistory.push({ action: decision, by: approver, notes });
+  leave.approvalHistory.push({ action: decision, by: approver, byName: req.user.name, notes });
 
   if (decision === 'Approved') {
     const field = balanceFieldMap[leave.leaveType];
@@ -194,6 +260,7 @@ const updateLeaveBalance = asyncHandler(async (req, res) => {
 
 module.exports = {
   getLeaves,
+  getLeavesToRecommend,
   applyLeave,
   sectionHeadReview,
   decideLeave,

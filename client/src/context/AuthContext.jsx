@@ -46,9 +46,12 @@ export function AuthProvider({ children }) {
   };
 
   const can = (...roles) => user && roles.includes(user.role);
+  // Departments this user may recommend leave for (set by an admin).
+  const recommendDepartments = user?.recommendDepartments || [];
+  const canRecommend = recommendDepartments.length > 0;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, can }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, can, canRecommend, recommendDepartments }}>
       {children}
     </AuthContext.Provider>
   );

@@ -22,7 +22,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 
   const employeeIdFilter = scopeFilter(req.scope, '_id');
   const relatedFilter = scopeFilter(req.scope);
-  const employeeMatch = req.scope.type === 'department' ? { department: req.scope.department } : {};
+  const employeeMatch = req.scope.type === 'department' ? { department: { $in: req.scope.departments } } : {};
 
   const [
     totalEmployees,

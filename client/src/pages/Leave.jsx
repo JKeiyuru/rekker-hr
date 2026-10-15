@@ -10,6 +10,8 @@ import Avatar from '../components/Avatar';
 import { Field, TextInput, Select, TextArea } from '../components/Fields';
 import useEmployees from '../hooks/useEmployees';
 import { useAuth } from '../context/AuthContext';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { leaveStage, recommenderName } from '../utils/leave';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -39,8 +41,9 @@ export default function Leave() {
   const { employees } = useEmployees();
   const { can, user } = useAuth();
   const isSelfService = !can('admin', 'hr');
-  const canDecide = can('admin', 'hr', 'director', 'manager'); // Part C: Management
-  const canRecommend = can('department_manager'); // Part B: Section Head
+  const canDecide = can('admin', 'hr', 'director'); // Part C: final decision
+  const [stageFilter, setStageFilter] = useState('All');
+  const [confirming, setConfirming] = useState(null); // approving a leave that was "Not Recommended"
 
   useEffect(() => {
     if (isSelfService && user?.employee?._id) {
@@ -77,26 +80,22 @@ export default function Leave() {
     }
   };
 
-  const recommend = async (leave, decision) => {
-    try {
-      await api.put(`/leave/${leave._id}/section-head-review`, {
-        decision,
-        by: user?.employee?._id,
-      });
-      toast.success(decision === 'Recommended' ? 'Marked as recommended' : 'Marked as not recommended');
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not update');
+  // Approving something the recommender advised against is allowed (the
+  // decision is management's), but ask first so it's a deliberate choice.
+  const requestDecision = (leave, decision) => {
+    if (decision === 'Approved' && leave.sectionHeadReview?.decision === 'Not Recommended') {
+      setConfirming(leave);
+    } else {
+      decide(leave, decision);
     }
   };
 
   const decide = async (leave, decision) => {
     try {
-      await api.put(`/leave/${leave._id}/decision`, {
-        decision,
-        approver: user?.employee?._id,
-      });
+      await api.put(`/leave/${leave._id}/decision`, { decision });
       toast.success(`Leave ${decision.toLowerCase()}`);
+      setConfirming(null);
+      setViewing(null);
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not update');
@@ -124,64 +123,40 @@ export default function Leave() {
     },
     { key: 'days', header: 'Days' },
     {
-      key: 'sectionHead',
-      header: 'Section Head',
-      render: (row) =>
-        row.sectionHeadReview?.decision && row.sectionHeadReview.decision !== 'Pending' ? (
-          <Badge tone={row.sectionHeadReview.decision === 'Recommended' ? 'green' : 'red'}>
-            {row.sectionHeadReview.decision}
-          </Badge>
-        ) : (
-          <span className="text-xs text-muted">—</span>
-        ),
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <div className="flex flex-col items-start gap-1">
+          <Badge>{leaveStage(row)}</Badge>
+          {row.status === 'Pending' && leaveStage(row) !== 'Pending' && (
+            <span className="text-[11px] text-muted">awaiting approval</span>
+          )}
+        </div>
+      ),
     },
-    { key: 'status', header: 'Status', render: (row) => <Badge>{row.status}</Badge> },
     {
       key: 'actions',
       header: '',
       render: (row) => {
-        if (row.status !== 'Pending') return null;
-        if (canDecide) {
-          return (
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => decide(row, 'Approved')}
-                className="focus-ring rounded-full p-1.5 bg-brand-green/10 text-brand-green hover:bg-brand-green/20"
-                title="Approve (final)"
-              >
-                <Check size={14} />
-              </button>
-              <button
-                onClick={() => decide(row, 'Rejected')}
-                className="focus-ring rounded-full p-1.5 bg-brand-red/10 text-brand-red hover:bg-brand-red/20"
-                title="Reject (final)"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          );
-        }
-        if (canRecommend && (row.sectionHeadReview?.decision || 'Pending') === 'Pending') {
-          return (
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => recommend(row, 'Recommended')}
-                className="focus-ring rounded-full p-1.5 bg-brand-green/10 text-brand-green hover:bg-brand-green/20"
-                title="Recommend"
-              >
-                <Check size={14} />
-              </button>
-              <button
-                onClick={() => recommend(row, 'Not Recommended')}
-                className="focus-ring rounded-full p-1.5 bg-brand-red/10 text-brand-red hover:bg-brand-red/20"
-                title="Not recommended"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          );
-        }
-        return null;
+        if (row.status !== 'Pending' || !canDecide) return null;
+        return (
+          <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => requestDecision(row, 'Approved')}
+              className="focus-ring rounded-full p-1.5 bg-brand-green/10 text-brand-green hover:bg-brand-green/20"
+              title="Approve (final)"
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={() => requestDecision(row, 'Rejected')}
+              className="focus-ring rounded-full p-1.5 bg-brand-red/10 text-brand-red hover:bg-brand-red/20"
+              title="Reject (final)"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        );
       },
     },
   ];
@@ -222,7 +197,7 @@ export default function Leave() {
     <div>
       <PageHeader
         title="Leave"
-        subtitle="Applications, section head recommendations, management decisions and balances"
+        subtitle="Applications, recommendations, final decisions and balances"
         onAdd={() => setDrawerOpen(true)}
         addLabel="Apply for leave"
       />
@@ -244,10 +219,31 @@ export default function Leave() {
         ))}
       </div>
 
+      {tab === 'applications' && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {['All', 'Pending', 'Recommended', 'Not Recommended', 'Approved', 'Rejected'].map((f) => {
+            const count = f === 'All' ? leaves.length : leaves.filter((l) => leaveStage(l) === f).length;
+            return (
+              <button
+                key={f}
+                onClick={() => setStageFilter(f)}
+                className={`focus-ring rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  stageFilter === f
+                    ? 'border-brand-red bg-brand-red/10 text-brand-red'
+                    : 'border-border text-ink/70 hover:text-ink'
+                }`}
+              >
+                {f === 'Pending' ? 'Awaiting recommendation' : f} · {count}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {tab === 'applications' ? (
         <DataTable
           columns={leaveColumns}
-          rows={leaves}
+          rows={stageFilter === 'All' ? leaves : leaves.filter((l) => leaveStage(l) === stageFilter)}
           loading={loading}
           onRowClick={setViewing}
           emptyMessage="No leave applications yet"
@@ -369,6 +365,18 @@ export default function Leave() {
         onClose={() => setViewing(null)}
         title="Leave application"
         subtitle={viewing ? `${viewing.employee?.firstName} ${viewing.employee?.lastName} · ${viewing.leaveType}` : ''}
+        footer={
+          viewing && canDecide && viewing.status === 'Pending' ? (
+            <div className="flex justify-end gap-2">
+              <Button variant="danger" onClick={() => requestDecision(viewing, 'Rejected')}>
+                Reject
+              </Button>
+              <Button variant="success" onClick={() => requestDecision(viewing, 'Approved')}>
+                Approve
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {viewing && (
           <div className="space-y-6">
@@ -406,7 +414,7 @@ export default function Leave() {
 
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">
-                Part B — Section Head
+                Part B — Recommendation
               </h4>
               <div className="card divide-y divide-border">
                 <DetailRow
@@ -421,7 +429,8 @@ export default function Leave() {
                     )
                   }
                 />
-                <DetailRow label="Comments" value={viewing.sectionHeadReview?.comments} />
+                <DetailRow label="By" value={recommenderName(viewing.sectionHeadReview)} />
+                <DetailRow label="Reason / comments" value={viewing.sectionHeadReview?.comments} />
               </div>
             </div>
 
@@ -437,6 +446,22 @@ export default function Leave() {
           </div>
         )}
       </Drawer>
+
+      <ConfirmDialog
+        open={!!confirming}
+        title="Approve a leave that was not recommended?"
+        description={
+          confirming
+            ? `${recommenderName(confirming.sectionHeadReview) || 'The recommender'} advised against this application${
+                confirming.sectionHeadReview?.comments ? `: "${confirming.sectionHeadReview.comments}"` : '.'
+              } The final decision is yours.`
+            : ''
+        }
+        confirmLabel="Approve anyway"
+        confirmVariant="success"
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => decide(confirming, 'Approved')}
+      />
     </div>
   );
 }

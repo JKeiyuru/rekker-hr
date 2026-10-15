@@ -2,10 +2,15 @@
 import { NavLink } from 'react-router-dom';
 import { navItems } from '../config/nav';
 import { useAuth } from '../context/AuthContext';
+import { Download } from 'lucide-react';
+import usePwaInstall from '../hooks/usePwaInstall';
 
 export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
-  const items = navItems.filter((item) => !item.roles || item.roles.includes(user?.role));
+  const { canInstall, install } = usePwaInstall();
+  const items = navItems.filter(
+    (item) => (!item.roles || item.roles.includes(user?.role)) && (!item.show || item.show(user))
+  );
 
   return (
     <>
@@ -18,8 +23,8 @@ export default function Sidebar({ open, onClose }) {
         }`}
       >
         <div className="flex items-center gap-2.5 px-6 h-16 shrink-0">
-          <span className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-brand-red text-white font-bold text-sm">
-            R
+          <span className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-brand-red text-white font-bold text-[13px] tracking-tight">
+            HR
             <span className="absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full bg-brand-yellow ring-2 ring-surface" />
           </span>
           <div className="leading-tight">
@@ -50,6 +55,14 @@ export default function Sidebar({ open, onClose }) {
         </nav>
 
         <div className="px-4 py-4 border-t border-border">
+          {canInstall && (
+            <button
+              onClick={install}
+              className="focus-ring mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-surface2"
+            >
+              <Download size={15} /> Install app
+            </button>
+          )}
           <p className="text-[11px] text-muted leading-relaxed">
             Rekker HR &middot; v1.0
             <br />

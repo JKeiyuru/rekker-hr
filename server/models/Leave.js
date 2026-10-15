@@ -1,7 +1,9 @@
 // server/models/Leave.js
 // Mirrors Rekker's actual paper "Leave Application Form":
 //   Part A (staff)         -> the top-level fields + handover/contact
-//   Part B (section head)  -> sectionHeadReview (advisory recommendation)
+//   Part B (section head)  -> sectionHeadReview (advisory recommendation by a
+//                             department head / manager the admin has given
+//                             leave-recommending rights; see User model)
 //   Part C (management)    -> the final decision (status/approver/etc)
 const mongoose = require('mongoose');
 
@@ -13,6 +15,10 @@ const reviewSchema = new mongoose.Schema(
       default: 'Pending',
     },
     by: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    // Who recommended, by login account (the recommender may not have a
+    // linked employee record, so keep the name on the review itself too).
+    byUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String },
     comments: { type: String },
     date: { type: Date },
   },
@@ -64,6 +70,7 @@ const leaveSchema = new mongoose.Schema(
           enum: ['Submitted', 'Recommended', 'Not Recommended', 'Approved', 'Rejected', 'Cancelled'],
         },
         by: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+        byName: String,
         date: { type: Date, default: Date.now },
         notes: String,
       },

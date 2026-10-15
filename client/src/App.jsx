@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
 import Attendance from './pages/Attendance';
 import Leave from './pages/Leave';
+import LeaveRecommendations from './pages/LeaveRecommendations';
 import Payroll from './pages/Payroll';
 import Payslips from './pages/Payslips';
 import Performance from './pages/Performance';
@@ -68,6 +69,14 @@ export default function App() {
           />
           <Route path="/attendance" element={<Attendance />} />
           <Route path="/leave" element={<Leave />} />
+          <Route
+            path="/leave-recommendations"
+            element={
+              <ProtectedRoute roles={['department_manager', 'manager']}>
+                <LeaveRecommendations />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/payroll"
             element={

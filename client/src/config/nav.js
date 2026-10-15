@@ -14,6 +14,7 @@ import {
   FolderLock,
   UserCog,
   Receipt,
+  ThumbsUp,
 } from 'lucide-react';
 
 export const navItems = [
@@ -21,6 +22,8 @@ export const navItems = [
   { to: '/employees', label: 'Employees', icon: Users, roles: ['admin', 'hr', 'director', 'manager', 'department_manager'] },
   { to: '/attendance', label: 'Attendance', icon: Clock },
   { to: '/leave', label: 'Leave', icon: CalendarDays },
+  // Only for people an admin has given leave-recommending rights
+  { to: '/leave-recommendations', label: 'Recommend Leave', icon: ThumbsUp, show: (user) => user?.recommendDepartments?.length > 0 },
   { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin', 'accountant', 'hr', 'director'] },
   { to: '/payslips', label: 'My Payslips', icon: Receipt },
   { to: '/performance', label: 'Performance', icon: Target },
