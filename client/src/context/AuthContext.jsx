@@ -1,5 +1,5 @@
 // client/src/context/AuthContext.jsx
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import api from '../api/axios';
 
 const AuthContext = createContext();
@@ -10,6 +10,25 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : null;
   });
   const [loading, setLoading] = useState(true);
+  // Self-service profile + completion ({ completion, editable, locked, readOnly }).
+  // null when the login isn't linked to an employee record.
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  const refreshProfile = useCallback(() => {
+    setProfileLoading(true);
+    return api
+      .get('/profile')
+      .then((res) => setProfile(res.data))
+      .catch(() => setProfile(null))
+      .finally(() => setProfileLoading(false));
+  }, []);
+
+  const hasEmployee = !!user?.employee;
+  useEffect(() => {
+    if (user && hasEmployee) refreshProfile();
+    else setProfile(null);
+  }, [user?._id, hasEmployee, refreshProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const token = localStorage.getItem('rekker-hr-token');
@@ -43,6 +62,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('rekker-hr-token');
     localStorage.removeItem('rekker-hr-user');
     setUser(null);
+    setProfile(null);
   };
 
   const can = (...roles) => user && roles.includes(user.role);
@@ -51,7 +71,7 @@ export function AuthProvider({ children }) {
   const canRecommend = recommendDepartments.length > 0;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, can, canRecommend, recommendDepartments }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, can, canRecommend, recommendDepartments, profile, setProfile, profileLoading, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

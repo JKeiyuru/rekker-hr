@@ -19,6 +19,8 @@ const emptyForm = {
   phone: '',
   gender: '',
   dateOfBirth: '',
+  maritalStatus: '',
+  nationalId: '',
   department: '',
   role: '',
   branch: '',
@@ -31,6 +33,7 @@ const emptyForm = {
   bankName: '',
   bankAccount: '',
   kraPin: '',
+  nssfNumber: '',
   emergencyContact: { name: '', relationship: '', phone: '' },
   nextOfKin: { name: '', relationship: '', phone: '', address: '' },
   notes: '',
@@ -135,6 +138,16 @@ export default function Employees() {
       { key: 'branch', header: 'Branch' },
       { key: 'employmentType', header: 'Type' },
       { key: 'status', header: 'Status', render: (row) => <Badge>{row.status}</Badge> },
+      {
+        key: 'profile',
+        header: 'Profile',
+        render: (row) =>
+          row.profileCompletion?.complete ? (
+            <Badge tone="green">Complete</Badge>
+          ) : (
+            <Badge tone="yellow">{row.profileCompletion?.percent ?? 0}%</Badge>
+          ),
+      },
     ],
     []
   );
@@ -363,6 +376,20 @@ export default function Employees() {
             </Field>
             <Field label="KRA PIN">
               <TextInput value={form.kraPin} onChange={(e) => setForm({ ...form, kraPin: e.target.value })} />
+            </Field>
+            <Field label="NSSF number">
+              <TextInput value={form.nssfNumber} onChange={(e) => setForm({ ...form, nssfNumber: e.target.value })} />
+            </Field>
+            <Field label="ID number">
+              <TextInput value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })} />
+            </Field>
+            <Field label="Marital status">
+              <Select value={form.maritalStatus} onChange={(e) => setForm({ ...form, maritalStatus: e.target.value })}>
+                <option value="">Select</option>
+                {['Single', 'Married', 'Divorced', 'Widowed', 'Separated'].map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </Select>
             </Field>
           </div>
 

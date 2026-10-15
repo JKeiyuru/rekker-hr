@@ -15,6 +15,7 @@ import {
   UserCog,
   Receipt,
   ThumbsUp,
+  UserCircle,
 } from 'lucide-react';
 
 export const navItems = [
@@ -33,6 +34,7 @@ export const navItems = [
   { to: '/training', label: 'Training', icon: GraduationCap },
   { to: '/disciplinary', label: 'Disciplinary', icon: ShieldAlert, roles: ['admin', 'hr', 'director'] },
   { to: '/documents', label: 'Documents', icon: FolderLock },
+  { to: '/profile', label: 'My Profile', icon: UserCircle, show: (user) => !!user?.employee },
   { to: '/users', label: 'User Accounts', icon: UserCog, roles: ['admin'] },
 ];
 

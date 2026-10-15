@@ -19,6 +19,7 @@ import Training from './pages/Training';
 import Disciplinary from './pages/Disciplinary';
 import Documents from './pages/Documents';
 import Users from './pages/Users';
+import Profile from './pages/Profile';
 import { useTheme } from './context/ThemeContext';
 
 export default function App() {
@@ -114,6 +115,7 @@ export default function App() {
             }
           />
           <Route path="/documents" element={<Documents />} />
+          <Route path="/profile" element={<Profile />} />
           <Route
             path="/users"
             element={

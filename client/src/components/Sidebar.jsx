@@ -6,7 +6,7 @@ import { Download } from 'lucide-react';
 import usePwaInstall from '../hooks/usePwaInstall';
 
 export default function Sidebar({ open, onClose }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { canInstall, install } = usePwaInstall();
   const items = navItems.filter(
     (item) => (!item.roles || item.roles.includes(user?.role)) && (!item.show || item.show(user))
@@ -50,6 +50,11 @@ export default function Sidebar({ open, onClose }) {
             >
               <Icon size={17} strokeWidth={2} />
               {label}
+              {to === '/profile' && profile && !profile.completion.complete && (
+                <span className="ml-auto rounded-full bg-brand-yellow/20 px-2 py-0.5 text-[11px] font-semibold text-yellow-700 dark:text-brand-yellow">
+                  {profile.completion.percent}%
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

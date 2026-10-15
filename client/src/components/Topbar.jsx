@@ -1,13 +1,14 @@
 // client/src/components/Topbar.jsx
 import { useState } from 'react';
-import { Menu, Moon, Sun, LogOut, ChevronDown } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Menu, Moon, Sun, LogOut, ChevronDown, UserCircle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import Avatar from './Avatar';
 
 export default function Topbar({ onMenuClick }) {
   const { theme, toggleTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, profile } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -52,6 +53,18 @@ export default function Topbar({ onMenuClick }) {
                     <p className="text-xs text-brand-red capitalize mt-0.5 font-medium">{user?.role}</p>
                   </div>
                   <div className="h-px bg-border my-1" />
+                  {user?.employee && (
+                    <Link
+                      to="/profile"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface2"
+                    >
+                      <UserCircle size={15} /> My profile
+                      {profile && !profile.completion.complete && (
+                        <span className="ml-auto text-xs font-semibold text-brand-red">{profile.completion.percent}%</span>
+                      )}
+                    </Link>
+                  )}
                   <button
                     onClick={logout}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-brand-red hover:bg-brand-red/10"

@@ -1,5 +1,6 @@
 // server/models/Employee.js
 const mongoose = require('mongoose');
+const { MARITAL_STATUSES, computeCompletion } = require('../utils/profileCompletion');
 
 const nextOfKinSchema = new mongoose.Schema(
   {
@@ -31,6 +32,7 @@ const employeeSchema = new mongoose.Schema(
     nationalId: { type: String },
     gender: { type: String, enum: ['Male', 'Female', 'Other'] },
     dateOfBirth: { type: Date },
+    maritalStatus: { type: String, enum: [...MARITAL_STATUSES, ''] },
 
     department: { type: String, required: true },
     role: { type: String, required: true }, // job title
@@ -73,12 +75,20 @@ const employeeSchema = new mongoose.Schema(
     payrollAliases: [{ type: String }],
 
     notes: { type: String },
+
+    // Set the first time the employee's own profile reaches 100%.
+    profileCompletedAt: { type: Date },
   },
   { timestamps: true }
 );
 
 employeeSchema.virtual('fullName').get(function () {
   return `${this.firstName} ${this.lastName}`;
+});
+// How much of the self-service profile is filled in (see utils/profileCompletion.js).
+employeeSchema.virtual('profileCompletion').get(function () {
+  const { percent, complete } = computeCompletion(this);
+  return { percent, complete };
 });
 employeeSchema.set('toJSON', { virtuals: true });
 employeeSchema.set('toObject', { virtuals: true });
