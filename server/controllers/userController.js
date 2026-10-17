@@ -2,7 +2,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
-const { resolveAccess } = require('../utils/userAccess');
+const { resolveAccess, assertEmployeeFree } = require('../utils/userAccess');
 
 const populateUser = (q) => q.populate('employee', 'firstName lastName employeeId department');
 
@@ -43,6 +43,15 @@ const updateUser = asyncHandler(async (req, res) => {
   } catch (err) {
     res.status(err.status || 400);
     throw err;
+  }
+
+  if (employee && String(employee) !== String(user.employee || '')) {
+    try {
+      await assertEmployeeFree(employee, user._id);
+    } catch (err) {
+      res.status(err.status || 400);
+      throw err;
+    }
   }
 
   if (name !== undefined) user.name = name;

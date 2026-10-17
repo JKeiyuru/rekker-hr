@@ -246,6 +246,7 @@ export default function Users() {
                 <option key={e._id} value={e._id}>
                   {e.firstName} {e.lastName}
                   {e.department ? ` — ${e.department}` : ''}
+                  {e.employeeId ? ` — ${e.employeeId}` : ''}
                 </option>
               ))}
             </Select>

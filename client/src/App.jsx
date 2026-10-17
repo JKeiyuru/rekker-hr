@@ -20,6 +20,7 @@ import Disciplinary from './pages/Disciplinary';
 import Documents from './pages/Documents';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
+import PayrollLinks from './pages/PayrollLinks';
 import { useTheme } from './context/ThemeContext';
 
 export default function App() {
@@ -116,6 +117,14 @@ export default function App() {
           />
           <Route path="/documents" element={<Documents />} />
           <Route path="/profile" element={<Profile />} />
+          <Route
+            path="/payroll-links"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <PayrollLinks />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/users"
             element={

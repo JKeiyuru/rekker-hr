@@ -54,6 +54,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'Rekker H
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/payroll-links', require('./routes/payrollLinkRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/employees', require('./routes/employeeRoutes'));
 app.use('/api/attendance', require('./routes/attendanceRoutes'));

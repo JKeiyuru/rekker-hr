@@ -185,7 +185,7 @@ function buildDirectory(employees) {
   });
 }
 
-function matchEmployee(rawName, dir) {
+function matchByName(rawName, dir) {
   let key = nameKey(rawName);
   if (CANONICAL[key]) key = CANONICAL[key];
   const tokens = key.split(' ').filter(Boolean);
@@ -221,8 +221,31 @@ function matchEmployee(rawName, dir) {
   return { id: null, score: 0, how: 'no match' };
 }
 
+// Name first, then the bank account as a safety check. Two staff can share a
+// name ("John Mwangi" x2), but not a bank account - so when the sheet row has
+// an account number it breaks ties, and if it contradicts the name match the
+// row is flagged for a human instead of being filed silently.
+const accDigits = (v) => String(v == null ? '' : v).replace(/\D/g, '');
+function matchEmployee(rawName, dir, acc) {
+  const result = matchByName(rawName, dir);
+  const a = accDigits(acc);
+  if (a.length < 6) return result;
+  const owners = dir.filter((d) => accDigits(d.e.bankAccount) === a);
+  if (owners.length !== 1) return result;
+  const owner = owners[0];
+  const label = `${owner.e.firstName} ${owner.e.lastName}`;
+  if (result.id === owner.id) return { ...result, score: 100, how: `${result.how} + bank account` };
+  if (!result.id && (result.ambiguous || []).some((x) => x.id === owner.id)) {
+    return { id: owner.id, score: 100, how: 'name + bank account', name: label };
+  }
+  if (result.id && result.id !== owner.id) {
+    return { ...result, score: Math.min(result.score, 60), conflict: true, how: `name says ${result.name}, but this bank account belongs to ${label} (${owner.e.department}) - please check` };
+  }
+  return result;
+}
+
 async function directory() {
-  return buildDirectory(await Employee.find({}).select('firstName lastName notes department payrollAliases').lean());
+  return buildDirectory(await Employee.find({}).select('firstName lastName notes department payrollAliases bankAccount').lean());
 }
 
 // ---- preview -----------------------------------------------------------------------
@@ -235,7 +258,8 @@ async function previewSheet(ws, template, runTypeHint) {
   const mapping = suggestMapping(cols, template);
   const { rows, sheetTotals } = readRows(ws, header, cols);
   const dir = await directory();
-  const matched = rows.map((r) => ({ ...r, match: matchEmployee(r.name, dir) }));
+  const accIdx = (mapping.find((m) => m.target === 'acc_no') || {}).index;
+  const matched = rows.map((r) => ({ ...r, match: matchEmployee(r.name, dir, accIdx ? r.cells[accIdx] : null) }));
   // columns with data that nothing maps to
   const mappedIdx = new Set(mapping.filter((m) => m.target).map((m) => m.index));
   const unmapped = cols
@@ -326,7 +350,7 @@ async function commitSheet({ period, runType, mapping, rows, status = 'Draft', r
     if (empId === 'new') {
       // an earlier row (or sheet) may already have created this person
       if (!dirCache.dir) dirCache.dir = await directory();
-      const m = matchEmployee(row.name, dirCache.dir);
+      const m = matchEmployee(row.name, dirCache.dir, bankIdx.no ? row.cells[bankIdx.no.index] : null);
       if (m.id && m.score >= 85) emp = await Employee.findById(m.id);
       if (!emp) {
         emp = await createEmployeeFromPayroll(row.name, row.section, period, {

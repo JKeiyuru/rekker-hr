@@ -60,4 +60,13 @@ async function resolveAccess(current, input) {
   return { role, managedDepartments, leaveRecommendation: { enabled, departments: recDepartments } };
 }
 
-module.exports = { resolveAccess };
+// An employee record can belong to only ONE login. Two logins on the same
+// record would see each other's payslips, leave and profile.
+async function assertEmployeeFree(employeeId, exceptUserId) {
+  if (!employeeId) return;
+  const User = require('../models/User');
+  const other = await User.findOne({ employee: employeeId, ...(exceptUserId ? { _id: { $ne: exceptUserId } } : {}) }).select('email');
+  if (other) throw Object.assign(new Error(`That employee record is already linked to the login ${other.email}. Unlink it there first.`), { status: 409 });
+}
+
+module.exports = { resolveAccess, assertEmployeeFree };

@@ -16,6 +16,7 @@ import {
   Receipt,
   ThumbsUp,
   UserCircle,
+  Link2,
 } from 'lucide-react';
 
 export const navItems = [
@@ -35,6 +36,7 @@ export const navItems = [
   { to: '/disciplinary', label: 'Disciplinary', icon: ShieldAlert, roles: ['admin', 'hr', 'director'] },
   { to: '/documents', label: 'Documents', icon: FolderLock },
   { to: '/profile', label: 'My Profile', icon: UserCircle, show: (user) => !!user?.employee },
+  { to: '/payroll-links', label: 'Payroll Links', icon: Link2, roles: ['admin'] },
   { to: '/users', label: 'User Accounts', icon: UserCog, roles: ['admin'] },
 ];
 

@@ -58,12 +58,16 @@ function buildPayslip({ entry, run, template, employee }) {
 }
 
 // Loads the payslips for one employee across a range of periods.
-async function payslipsFor({ employeeId, from, to, runType = 'End-Month', includeDrafts = false }) {
+async function payslipsFor({ employeeId, from, to, runType = 'End-Month', includeDrafts = false, guard = false }) {
   const q = { employee: employeeId, runType, period: { $gte: from, $lte: to } };
   const entries = await PayrollEntry.find(q).sort({ period: 1 }).populate('employee');
   const template = await svc.getTemplate(runType);
   const out = [];
+  // guard: self-service view - skip rows that pay another employee's bank account
+  const { loadAccountOwners, foreignAccountOwners } = require('../utils/payrollLinks');
+  const owners = guard ? await loadAccountOwners() : null;
   for (const e of entries) {
+    if (guard && foreignAccountOwners(e, employeeId, owners)) continue;
     const run = await PayrollRun.findOne({ period: e.period, runType: e.runType });
     if (!run) continue;
     if (!includeDrafts && run.status === 'Draft') continue;

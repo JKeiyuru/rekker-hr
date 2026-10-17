@@ -2,7 +2,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
-const { resolveAccess } = require('../utils/userAccess');
+const { resolveAccess, assertEmployeeFree } = require('../utils/userAccess');
 
 // @desc    Register a new user (admin/HR only in practice)
 // @route   POST /api/auth/register
@@ -13,6 +13,13 @@ const registerUser = asyncHandler(async (req, res) => {
   if (exists) {
     res.status(400);
     throw new Error('A user with that email already exists');
+  }
+
+  try {
+    await assertEmployeeFree(employee);
+  } catch (err) {
+    res.status(err.status || 400);
+    throw err;
   }
 
   // Only an admin may hand out anything above a plain employee account
