@@ -66,6 +66,10 @@ const updateUser = asyncHandler(async (req, res) => {
 });
 
 const deleteUser = asyncHandler(async (req, res) => {
+  if (String(req.params.id) === String(req.user._id)) {
+    res.status(403);
+    throw new Error("You can't delete your own account.");
+  }
   const user = await User.findByIdAndDelete(req.params.id);
   if (!user) {
     res.status(404);

@@ -9,9 +9,15 @@
 //              one canonical name so they are created once.
 const MATCH = {
   'STEPHEN MWENDWA': { firstName: 'Stephen', lastName: 'Katila' },
-  'JOHN MWANGI': { firstName: 'John', lastName: 'Mwangi', department: 'Merchandising' },
-  'JOHN KARIUKI MWANGI': { firstName: 'John', lastName: 'Mwangi', department: 'Merchandising' },
-  'JOHN GAKUNDI': { firstName: 'John', lastName: 'Mwangi', department: 'Accounts' },
+  // The two Johns. Their records are now "John Kariuki Mwangi" (Merchandiser)
+  // and "John Gakundi Mwangi" (Accountant); a plain "JOHN MWANGI" on the
+  // sheets has always been the merchandiser (bank account 0870186128611).
+  // `fullName` matches the whole name on the employee record.
+  'JOHN MWANGI': { fullName: 'John Kariuki Mwangi' },
+  'JOHN KARIUKI MWANGI': { fullName: 'John Kariuki Mwangi' },
+  'JOHN KARIUKI': { fullName: 'John Kariuki Mwangi' },
+  'JOHN GAKUNDI': { fullName: 'John Gakundi Mwangi' },
+  'JOHN GAKUNDI MWANGI': { fullName: 'John Gakundi Mwangi' },
   'ANTHONY MURIITHI': { firstName: 'Tonny', lastName: 'Murithi' },
   'EDNA': { firstName: 'Dinahvent', lastName: 'Wafula' },
   'JOHN MWIRUTHI': { firstName: 'Neverstone', lastName: 'John' },

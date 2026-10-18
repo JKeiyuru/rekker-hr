@@ -4,6 +4,10 @@ const Employee = require('../models/Employee');
 const LeaveBalance = require('../models/LeaveBalance');
 const User = require('../models/User');
 const Asset = require('../models/Asset');
+const PayrollEntry = require('../models/PayrollEntry');
+const PayrollRun = require('../models/PayrollRun');
+const payrollSvc = require('../services/payrollService');
+const { loadAccountOwners, foreignAccountOwners, digits } = require('../utils/payrollLinks');
 const { scopeFilter, isWithinScope } = require('../middleware/scope');
 
 // @desc    Get all employees (supports ?status=&department=&search=)
@@ -27,6 +31,52 @@ const getEmployees = asyncHandler(async (req, res) => {
     .populate('reportingManager', 'firstName lastName employeeId')
     .sort({ createdAt: -1 });
   res.json(employees);
+});
+
+// @desc    Pay summary for one employee for the most recent pay month (basic
+//          salary, allowances, deductions, net). Payroll roles only.
+// @route   GET /api/employees/:id/pay
+const getEmployeePay = asyncHandler(async (req, res) => {
+  const emp = await Employee.findById(req.params.id).select('bankName bankAccount');
+  if (!emp) {
+    res.status(404);
+    throw new Error('Employee not found');
+  }
+  const entries = await PayrollEntry.find({ employee: emp._id, runType: 'End-Month' }).sort({ period: -1 }).lean();
+  const runs = await PayrollRun.find({ runType: 'End-Month', period: { $in: entries.map((e) => e.period) } }).lean();
+  const runBy = Object.fromEntries(runs.map((r) => [r.period, r]));
+  // latest approved/paid month; if the newest month is still a draft, say so
+  const final = entries.find((e) => runBy[e.period] && runBy[e.period].status !== 'Draft');
+  const entry = final || entries.find((e) => runBy[e.period]);
+  if (!entry) return res.json({ none: true });
+
+  const run = runBy[entry.period];
+  const template = await payrollSvc.getTemplate('End-Month');
+  const columns = payrollSvc.columnsForRun(run, template).filter((c) => !c.archived);
+  const computed = entry.computed || {};
+  const amount = (c) => Number(computed[c.key]) || 0;
+  const basicCol = columns.find((c) => c.key === 'basic_salary') || columns.find((c) => /basic/i.test(c.label));
+  const pick = (kind) =>
+    columns
+      .filter((c) => c.kind === kind && amount(c) !== 0 && c !== basicCol && c.kind !== 'gross' && c.kind !== 'net')
+      .map((c) => ({ label: c.payslipLabel || c.label, amount: amount(c) }));
+  const acc = String(computed.acc_no || emp.bankAccount || '');
+  const owners = await loadAccountOwners();
+  res.json({
+    period: entry.period,
+    status: run.status,
+    draft: run.status === 'Draft',
+    basicSalary: basicCol ? amount(basicCol) : null,
+    earnings: pick('earning'),
+    deductions: pick('deduction'),
+    gross: entry.gross,
+    totalDeductions: entry.totalDeductions,
+    net: entry.net,
+    payrollName: entry.payrollName,
+    bank: { name: computed.acc_type || emp.bankName || '', account: acc ? `${'•'.repeat(Math.max(digits(acc).length - 4, 0))}${digits(acc).slice(-4)}` : '' },
+    // true if this payroll row pays an account that belongs to a different employee
+    suspect: !!foreignAccountOwners(entry, emp._id, owners),
+  });
 });
 
 // @desc    Get single employee
@@ -98,6 +148,7 @@ const getEmployeeOptions = asyncHandler(async (req, res) => {
 
 module.exports = {
   getEmployees,
+  getEmployeePay,
   getEmployee,
   createEmployee,
   updateEmployee,

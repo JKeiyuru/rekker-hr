@@ -4,6 +4,7 @@ import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import Drawer from '../components/Drawer';
+import ConfirmDialog from '../components/ConfirmDialog';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 import { Field, TextInput, Select, Checkbox } from '../components/Fields';
@@ -45,6 +46,7 @@ export default function Users() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [toDelete, setToDelete] = useState(null);
   const [editing, setEditing] = useState(null); // user being edited, or null when creating
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -131,6 +133,18 @@ export default function Users() {
     }
   };
 
+  const deleteAccount = async () => {
+    try {
+      await api.delete(`/users/${toDelete._id}`);
+      toast.success('Account deleted');
+      setToDelete(null);
+      setDrawerOpen(false);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not delete the account');
+    }
+  };
+
   const toggleActive = async (user) => {
     try {
       await api.put(`/users/${user._id}`, { isActive: !user.isActive });
@@ -206,8 +220,13 @@ export default function Users() {
         title={editing ? 'Edit account' : 'Create a user account'}
         subtitle={editing ? editing.email : undefined}
         footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDrawerOpen(false)}>
+          <div className="flex items-center gap-2">
+            {editing && !roleLocked && (
+              <Button variant="ghost" className="text-brand-red hover:bg-brand-red/10 mr-auto" onClick={() => setToDelete(editing)}>
+                Delete account
+              </Button>
+            )}
+            <Button variant="secondary" className={editing && !roleLocked ? '' : 'ml-auto'} onClick={() => setDrawerOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleSubmit} loading={saving}>
@@ -322,6 +341,14 @@ export default function Users() {
           )}
         </form>
       </Drawer>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        title={`Delete the login for ${toDelete?.name || ''}?`}
+        description="They will no longer be able to sign in. Their employee record and payroll stay as they are, and you can create a new login linked to the right employee."
+        onCancel={() => setToDelete(null)}
+        onConfirm={deleteAccount}
+      />
     </div>
   );
 }

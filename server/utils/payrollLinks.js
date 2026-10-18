@@ -67,11 +67,16 @@ function acceptableKeys(e) {
     [`${first} ${o}`, `${first} ${o} ${last}`, `${first} ${last} ${o}`, o].forEach((k) => keys.add(k.trim()));
   }
   for (const [k, m] of Object.entries(MATCH)) {
+    if (m.fullName) { if (nameKey(m.fullName) === `${first} ${last}`.trim()) keys.add(k); continue; }
     if (nameKey(m.firstName) === first && nameKey(m.lastName) === last && (!m.department || m.department === e.department)) keys.add(k);
   }
   for (const [k, canon] of Object.entries(CANONICAL)) if (canon === `${first} ${last}`.trim()) keys.add(k);
+  // sheet spellings made only of this person's own name parts, e.g. "JOHN GAKUNDI"
+  // for "John Gakundi Mwangi" (two or more parts, so a lone first name never counts)
+  keys.tokens = new Set([...first.split(' '), ...last.split(' '), ...(others ? nameKey(others).split(' ') : [])].filter(Boolean));
   return keys;
 }
+const isAcceptable = (keys, key) => keys.has(key) || (key.split(' ').filter(Boolean).length >= 2 && key.split(' ').every((t) => keys.tokens.has(t)));
 
 async function auditPayrollLinks() {
   const [users, employees, entries, runs, owners] = await Promise.all([
@@ -143,7 +148,7 @@ async function auditPayrollLinks() {
       g.periods.push(en.period);
     }
     for (const g of names.values()) {
-      if (g.name && !accepted.has(nameKey(g.name))) {
+      if (g.name && !isAcceptable(accepted, nameKey(g.name))) {
         issues.push({ level: 'wrong', code: 'name-mismatch', payrollName: g.name, message: `${g.count} payroll row(s) (${[...new Set(g.periods)].sort().join(', ')}) are filed under this employee but were written as "${g.name}" on the sheet.` });
       }
     }

@@ -1,6 +1,6 @@
 // client/src/components/Sidebar.jsx
 import { NavLink } from 'react-router-dom';
-import { navItems } from '../config/nav';
+import { navItems, navGroups } from '../config/nav';
 import { useAuth } from '../context/AuthContext';
 import { Download } from 'lucide-react';
 import usePwaInstall from '../hooks/usePwaInstall';
@@ -33,30 +33,43 @@ export default function Sidebar({ open, onClose }) {
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
-          {items.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-brand-red text-white shadow-sm shadow-brand-red/25'
-                    : 'text-ink/80 hover:bg-surface2 hover:text-ink'
-                }`
-              }
-            >
-              <Icon size={17} strokeWidth={2} />
-              {label}
-              {to === '/profile' && profile && !profile.completion.complete && (
-                <span className="ml-auto rounded-full bg-brand-yellow/20 px-2 py-0.5 text-[11px] font-semibold text-yellow-700 dark:text-brand-yellow">
-                  {profile.completion.percent}%
-                </span>
-              )}
-            </NavLink>
-          ))}
+        <nav className="flex-1 overflow-y-auto px-3 py-2">
+          {navGroups.map((g) => {
+            const groupItems = items.filter((i) => i.group === g.key);
+            if (!groupItems.length) return null;
+            return (
+              <div key={g.key} className={g.label ? 'mt-4 first:mt-0' : ''}>
+                {g.label && (
+                  <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted/80">{g.label}</p>
+                )}
+                <div className="space-y-0.5">
+                  {groupItems.map(({ to, label, icon: Icon, end }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={end}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-brand-red text-white shadow-sm shadow-brand-red/25'
+                            : 'text-ink/80 hover:bg-surface2 hover:text-ink'
+                        }`
+                      }
+                    >
+                      <Icon size={17} strokeWidth={2} />
+                      {label}
+                      {to === '/profile' && profile && !profile.completion.complete && (
+                        <span className="ml-auto rounded-full bg-brand-yellow/20 px-2 py-0.5 text-[11px] font-semibold text-yellow-700 dark:text-brand-yellow">
+                          {profile.completion.percent}%
+                        </span>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="px-4 py-4 border-t border-border">

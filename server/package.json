@@ -12,7 +12,8 @@
     "clean:demo": "node utils/removeDemoData.js",
     "clean:departed": "node utils/removeDeparted.js",
     "seed:directors": "node utils/seedDirectors.js",
-    "seed:payroll": "node utils/importPayrollHistory.js"
+    "seed:payroll": "node utils/importPayrollHistory.js",
+    "repair:johns": "node utils/repairJohns.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -10,6 +10,7 @@ import Badge from '../components/Badge';
 import Avatar from '../components/Avatar';
 import { Field, TextInput, Select, TextArea } from '../components/Fields';
 import { useAuth } from '../context/AuthContext';
+import { money, periodLabel } from './payroll/shared';
 import toast from 'react-hot-toast';
 
 const emptyForm = {
@@ -419,6 +420,8 @@ export default function Employees() {
               </div>
             </div>
 
+            {can('admin', 'hr', 'director', 'accountant') && <PayDetails employeeId={viewing._id} />}
+
             <DetailGroup title="Employment">
               <DetailRow label="Department" value={viewing.department} />
               <DetailRow label="Branch" value={viewing.branch} />
@@ -465,6 +468,65 @@ export default function Employees() {
 
 function SectionTitle({ children }) {
   return <h4 className="text-sm font-semibold text-ink mt-2 mb-3 pb-2 border-b border-border">{children}</h4>;
+}
+
+// Latest pay month for this employee (basic salary, allowances, deductions,
+// net) so nobody has to open the Payroll page to check it. Payroll roles only.
+function PayDetails({ employeeId }) {
+  const [pay, setPay] = useState(undefined); // undefined = loading, null = failed
+
+  useEffect(() => {
+    setPay(undefined);
+    api
+      .get(`/employees/${employeeId}/pay`)
+      .then((r) => setPay(r.data))
+      .catch(() => setPay(null));
+  }, [employeeId]);
+
+  const Line = ({ label, value, strong }) => (
+    <div className={`flex justify-between px-4 py-2.5 text-sm ${strong ? 'bg-surface2/50' : ''}`}>
+      <span className={strong ? 'font-medium text-ink' : 'text-muted'}>{label}</span>
+      <span className={`tabular-nums text-right ${strong ? 'font-semibold text-ink' : 'text-ink font-medium'}`}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Pay{pay && !pay.none ? ` — ${periodLabel(pay.period)}` : ''}
+        </h4>
+        {pay && !pay.none && <Badge>{pay.draft ? 'Draft' : pay.status}</Badge>}
+      </div>
+      {pay === undefined ? (
+        <div className="card px-4 py-3 text-sm text-muted">Loading pay details…</div>
+      ) : pay === null ? (
+        <div className="card px-4 py-3 text-sm text-muted">Pay details could not be loaded.</div>
+      ) : pay.none ? (
+        <div className="card px-4 py-3 text-sm text-muted">No payroll recorded for this employee yet.</div>
+      ) : (
+        <>
+          {pay.suspect && (
+            <div className="mb-2 rounded-xl border border-brand-red/30 bg-brand-red/5 px-4 py-2.5 text-sm text-brand-red">
+              This payroll row pays a bank account that belongs to a different employee. Check Payroll Links.
+            </div>
+          )}
+          <div className="card divide-y divide-border">
+            <Line label="Basic salary" value={pay.basicSalary != null ? `KES ${money(pay.basicSalary, 2)}` : '—'} strong />
+            {pay.earnings.map((e) => (
+              <Line key={e.label} label={e.label} value={`KES ${money(e.amount, 2)}`} />
+            ))}
+            <Line label="Gross pay" value={`KES ${money(pay.gross, 2)}`} />
+            {pay.deductions.map((d) => (
+              <Line key={d.label} label={d.label} value={`− KES ${money(d.amount, 2)}`} />
+            ))}
+            <Line label="Net pay" value={`KES ${money(pay.net, 2)}`} strong />
+            {pay.bank.account && <Line label="Paid to" value={`${pay.bank.name} ${pay.bank.account}`.trim()} />}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function DetailGroup({ title, children }) {

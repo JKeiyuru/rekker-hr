@@ -196,7 +196,9 @@ function matchByName(rawName, dir) {
 
   const m = MATCH[key];
   if (m) {
-    const hit = dir.filter((d) => d.first === nameKey(m.firstName) && d.last === nameKey(m.lastName) && (!m.department || d.e.department === m.department));
+    const hit = m.fullName
+      ? dir.filter((d) => `${d.first} ${d.last}`.trim() === nameKey(m.fullName))
+      : dir.filter((d) => d.first === nameKey(m.firstName) && d.last === nameKey(m.lastName) && (!m.department || d.e.department === m.department));
     if (hit.length === 1) return { id: hit[0].id, score: 100, how: 'name list', name: label(hit[0]) };
   }
 
@@ -324,12 +326,14 @@ async function createEmployeeFromPayroll(rawName, section, period, bank = {}) {
 
 // ---- commit ----------------------------------------------------------------------
 // mapping: [{ index, target, mode }]   rows: [{ name, section, cells, employee: id | 'new' | null }]
-async function commitSheet({ period, runType, mapping, rows, status = 'Draft', replace = false, source = '' }, user) {
+async function commitSheet({ period, runType, mapping, rows, status = 'Draft', replace = false, source = '', allowLocked = false }, user) {
   const template = await svc.getTemplate(runType);
-  const columns = template.columns.map((c) => c.toObject());
-  const byKey = Object.fromEntries(columns.map((c) => [c.key, c]));
   let run = await svc.getRun(period, runType);
-  if (run && run.status !== 'Draft') throw svc.httpError(409, `${runType} ${period} is already ${run.status}. Reopen it before importing into it.`);
+  // allowLocked (repair tool only): write into an Approved/Paid run using the
+  // columns frozen when it was approved, and leave its status untouched.
+  const columns = allowLocked ? svc.columnsForRun(run, template) : template.columns.map((c) => c.toObject());
+  const byKey = Object.fromEntries(columns.map((c) => [c.key, c]));
+  if (run && run.status !== 'Draft' && !allowLocked) throw svc.httpError(409, `${runType} ${period} is already ${run.status}. Reopen it before importing into it.`);
   if (!run) ({ run } = await svc.createRun(period, runType, { prefill: 'none', notes: source ? `Imported from ${source}` : '' }, user));
   if (replace) await PayrollEntry.deleteMany({ period, runType });
 
@@ -385,7 +389,7 @@ async function commitSheet({ period, runType, mapping, rows, status = 'Draft', r
     }
 
     let entry = await PayrollEntry.findOne({ employee: emp._id, period, runType });
-    if (!entry) entry = new PayrollEntry({ employee: emp._id, period, runType, order: order++ });
+    if (!entry) entry = new PayrollEntry({ employee: emp._id, period, runType, order: typeof row.order === 'number' ? row.order : order++ });
     entry.section = row.section || entry.section || '';
     entry.payrollName = row.name || entry.payrollName || '';
     entry.values = replace ? {} : entry.values || {};
@@ -403,9 +407,11 @@ async function commitSheet({ period, runType, mapping, rows, status = 'Draft', r
     }
   }
 
-  if (source) { run.importedFrom = source; await run.save(); }
-  if (status !== 'Draft') await svc.setStatus(period, runType, 'Approved', user);
-  if (status === 'Paid') await svc.setStatus(period, runType, 'Paid', user);
+  if (!allowLocked) {
+    if (source) { run.importedFrom = source; await run.save(); }
+    if (status !== 'Draft') await svc.setStatus(period, runType, 'Approved', user);
+    if (status === 'Paid') await svc.setStatus(period, runType, 'Paid', user);
+  }
   await svc.audit(user, 'import.commit', { period, runType, summary: `Imported ${summary.imported} rows from ${source || 'Excel'}${summary.createdEmployees.length ? `, created ${summary.createdEmployees.length} employee(s)` : ''}` });
   return summary;
 }
